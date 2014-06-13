@@ -19,19 +19,19 @@ Read and write raw Ethernet frames from Racket programs.
 ## How?
 
 ```racket
- (require packet-socket)
+(require packet-socket)
 
- (display (raw-interface-names))
- (newline)
+(display (raw-interface-names))
+(newline)
 
- (define handle (raw-interface-open "eth0:1"))
- (unless handle (error 'example "Couldn't open the device"))
+(define handle (raw-interface-open "eth0:1"))
+(unless handle (error 'example "Couldn't open the device"))
 
- (define packet (raw-interface-read handle)) ;; blocks
+(define packet (raw-interface-read handle)) ;; blocks
 
- (raw-interface-write handle packet)
+(raw-interface-write handle packet)
 
- (raw-interface-close handle)
+(raw-interface-close handle)
 ```
 
 You will need to take care of Ethernet frame headers, footers,
