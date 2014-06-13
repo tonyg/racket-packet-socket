@@ -10,7 +10,7 @@ A tiny C extension, with a pinch of Racket hackage,
 Relieves you of your burden and returns you to your slackage,  
 And competently fixes Racket's packet socket lackage.
 
--- [tonyg](http://github.com/tonyg), with [apologies to Gene Ziegler](http://web.archive.org/web/20130301230602/http://geneziegler.com/clocktower/drseuss.html)
+— [tonyg](http://github.com/tonyg), with [apologies to Gene Ziegler](http://web.archive.org/web/20130301230602/http://geneziegler.com/clocktower/drseuss.html)
 
 ## What?
 
@@ -18,10 +18,21 @@ Read and write raw Ethernet frames from Racket programs.
 
 ## How?
 
-    (require packet-socket)
-    (define handle (raw-interface-open "eth0:1"))
-	(define packet (raw-interface-read handle)) ;; blocks
-	(raw-interface-write handle packet)
+```racket
+ (require packet-socket)
+
+ (display (raw-interface-names))
+ (newline)
+
+ (define handle (raw-interface-open "eth0:1"))
+ (unless handle (error 'example "Couldn't open the device"))
+
+ (define packet (raw-interface-read handle)) ;; blocks
+
+ (raw-interface-write handle packet)
+
+ (raw-interface-close handle)
+```
 
 You will need to take care of Ethernet frame headers, footers,
 checksums and addressing yourself. You may find the Racket package
@@ -30,16 +41,8 @@ in manipulating binary data structures.
 
 ## Who?
 
-Originally written by
-[Jonathan Schuster](https://github.com/schuster); converted to a
-Racket package by [Tony Garnock-Jones](https://github.com/tonyg).
-
-## License
-
-MIT:
-
-Copyright (c) 2014 Jonathan Schuster  
-Copyright (c) 2014 Tony Garnock-Jones
+Copyright (c) 2014 [Jonathan Schuster](https://github.com/schuster)  
+Copyright (c) 2014 [Tony Garnock-Jones](https://github.com/tonyg)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
