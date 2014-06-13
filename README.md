@@ -39,6 +39,14 @@ checksums and addressing yourself. You may find the Racket package
 [bitsyntax](https://github.com/tonyg/racket-bitsyntax) useful to you
 in manipulating binary data structures.
 
+You will also need to give the Racket executable `CAP_NET_RAW`
+capability on Linux in order to create packet sockets. One approach to
+this could be:
+
+```sh
+sudo setcap cap_net_raw+p+i+e `which racket`
+```
+
 ## Who?
 
 Copyright (c) 2014 [Jonathan Schuster](https://github.com/schuster)  
