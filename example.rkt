@@ -30,8 +30,12 @@
   (bytes->hex-string (bit-string->bytes bs)))
 
 (define (pretty-ip ip)
-  (bit-string-case (bit-string (ip :: integer bytes 4))
-    ([ a b c d ] (format "~a.~a.~a.~a" a b c d))))
+  (pretty-binary-ip (bit-string (ip :: integer bytes 4))))
+
+(define (pretty-binary-ip ip-bytes)
+  (bit-string-case ip-bytes
+    ([ a b c d ] (format "~a.~a.~a.~a" a b c d))
+    (else (format "(bad IP) ~a" (pretty-bytes ip-bytes)))))
 
 (define (dump bs)
   (dump-bytes! (bit-string->bytes bs)))
@@ -179,9 +183,30 @@
 		    (analyze-ipv4-data protocol data))))
 	       (begin (printf "  invalid header length; rest:\n")
 		      (dump rest))))
-	  ([ (unknown :: binary) ]
+	  (else
 	   (printf "  Unknown IP packet:\n")
-	   (dump unknown)))]
+	   (dump body)))]
+       [(#x0806) ;; ARP
+	(bit-string-case body
+	  ([ (htype :: integer bytes 2)
+	     (ptype :: integer bytes 2)
+	     hlen
+	     plen
+	     (oper :: integer bytes 2)
+	     (sender-hardware-address :: binary bytes hlen)
+	     (sender-protocol-address :: binary bytes plen)
+	     (target-hardware-address :: binary bytes hlen)
+	     (target-protocol-address :: binary bytes plen) ]
+	   (printf "  ARP (htype ~a, ptype 0x~a, hlen ~a, plen ~a, oper ~a)\n"
+		   htype (number->string ptype 16) hlen plen oper)
+	   (printf "  ~a/~a --> ~a/~a\n"
+		   (pretty-bytes sender-hardware-address)
+		   (pretty-binary-ip sender-protocol-address)
+		   (pretty-bytes target-hardware-address)
+		   (pretty-binary-ip target-protocol-address)))
+	  (else
+	   (printf "  Unknown ARP packet:\n")
+	   (dump body)))]
        [else
 	(printf "  Unknown ethertype 0x~a; body:\n" (number->string ether-type 16))
 	(dump body)]))
