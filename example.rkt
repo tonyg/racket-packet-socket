@@ -52,6 +52,14 @@
 
 (define (analyze-ipv4-data protocol data)
   (case protocol
+    [(1) ;; ICMP
+     (bit-string-case data
+       ([ type code (checksum :: integer bytes 2) (rest :: binary) ]
+	(printf "      ICMP ~a/~a (cksum ~a):\n" type code checksum)
+	(dump rest))
+       (else
+	(printf "      ICMP unknown:\n")
+	(dump data)))]
     [(6) ;; TCP
      (bit-string-case data
        ([ (source-port :: integer bytes 2)
@@ -100,9 +108,21 @@
 	   (analyze-tcp-options opts)
 	   (printf "    data:\n")
 	   (dump data))))
-       ([ (other :: binary) ]
+       (else
 	(printf "    unknown TCP packet:\n")
-	(dump other)))]
+	(dump data)))]
+    [(17) ;; UDP
+     (bit-string-case data
+       ([ (source-port :: integer bytes 2)
+	  (target-port :: integer bytes 2)
+	  (length :: integer bytes 2)
+	  (checksum :: integer bytes 2)
+	  (rest :: binary) ]
+	(printf"     UDP ~a -> ~a (length ~a, cksum ~a)\n" source-port target-port length checksum)
+	(dump rest))
+       (else
+	(printf "    unknown UDP packet:\n")
+	(dump data)))]
     [else
      (printf "    unknown IPv4 protocol:\n")
      (dump data)]))
@@ -114,7 +134,7 @@
        (source-mac-addr :: binary bytes 6)
        (ether-type :: integer bytes 2)
        (body :: binary) ]
-     (printf "PACKET: ~a -> ~a (type ~a)\n"
+     (printf "PACKET: ~a -> ~a (type 0x~a)\n"
 	     (pretty-bytes source-mac-addr)
 	     (pretty-bytes target-mac-addr)
 	     (number->string ether-type 16))
@@ -163,7 +183,7 @@
 	   (printf "  Unknown IP packet:\n")
 	   (dump unknown)))]
        [else
-	(printf "  Unknown ethertype ~a; body:\n" (number->string ether-type 16))
+	(printf "  Unknown ethertype 0x~a; body:\n" (number->string ether-type 16))
 	(dump body)]))
     ([ (packet :: binary) ]
      (printf "UNKNOWN:\n")
