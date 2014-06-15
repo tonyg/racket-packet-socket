@@ -29,6 +29,8 @@
 (define (pretty-bytes bs)
   (bytes->hex-string (bit-string->bytes bs)))
 
+(printf "Local hwaddr is ~a\n" (pretty-bytes (raw-interface-hwaddr h)))
+
 (define (pretty-ip ip)
   (pretty-binary-ip (bit-string (ip :: integer bytes 4))))
 

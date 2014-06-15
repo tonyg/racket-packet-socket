@@ -17,10 +17,12 @@
 #include <net/ethernet.h>
 
 #if defined(__linux__)
+#include <net/if_arp.h>
 #include <netpacket/packet.h>
 #endif
 
 #if defined(__APPLE__)
+#include <net/if_dl.h>
 #include <net/bpf.h>
 #endif
 
@@ -31,33 +33,32 @@
 
 #if defined(__linux__)
 
-static int getInterfaceIndexInternal(int sock, char const *interfaceName)
+static int lookupInterfaceInfo(int sock, char const *interfaceName, int info, struct ifreq *ifr)
   XFORM_SKIP_PROC
 {
-  struct ifreq ifr;
-  int index_result;
-
-  strncpy(ifr.ifr_name, interfaceName, IFNAMSIZ);
-  /* printf("The interface for index: %s\n", ifr->ifr_name); */
-
-  if (ioctl(sock, SIOCGIFINDEX, &ifr) < 0) {
-    perror("ioctl error while looking up interface");
+  strncpy(ifr->ifr_name, interfaceName, IFNAMSIZ);
+  if (ioctl(sock, info, ifr) < 0) {
+    perror("ioctl error while looking performing ioctl on interface");
+    fprintf(stderr, "(ioctl number 0x%08x, interface %s)\n", info, interfaceName);
     return -1;
+  } else {
+    return 0;
   }
-
-  return ifr.ifr_ifindex;
 }
 
 static int bindToInterface(int sock, char const *interfaceName)
   XFORM_SKIP_PROC
 {
+  struct ifreq ifr;
   struct sockaddr_ll socketAddress;
-  socketAddress.sll_family = AF_PACKET;
-  socketAddress.sll_protocol = htons(ETH_P_ALL);
-  socketAddress.sll_ifindex = getInterfaceIndexInternal(sock, interfaceName);
-  if (socketAddress.sll_ifindex == -1) {
+
+  if (lookupInterfaceInfo(sock, interfaceName, SIOCGIFINDEX, &ifr) < 0) {
     return -1;
   }
+
+  socketAddress.sll_family = AF_PACKET;
+  socketAddress.sll_protocol = htons(ETH_P_ALL);
+  socketAddress.sll_ifindex = ifr.ifr_ifindex;
 
   if (bind(sock, (struct sockaddr *) &socketAddress, sizeof(socketAddress)) < 0) {
     perror("Bind error");
@@ -94,6 +95,22 @@ static int extractPacket(char * const bufbase, size_t limit, int o, int *basep, 
   *basep = 0;
   *lenp = (o == 0) ? limit : 0;
   return limit;
+}
+
+static Scheme_Object *socket_hwaddr(int argc, Scheme_Object **argv) {
+  int sock = SCHEME_INT_VAL(argv[0]);
+  char const *interfaceName = SCHEME_BYTE_STR_VAL(argv[1]);
+  XFORM_CAN_IGNORE struct ifreq ifr;
+
+  if (lookupInterfaceInfo(sock, interfaceName, SIOCGIFHWADDR, &ifr) < 0) {
+    return scheme_false;
+  }
+
+  if (ifr.ifr_hwaddr.sa_family != ARPHRD_ETHER) {
+    return scheme_false;
+  }
+
+  return scheme_make_sized_byte_string(ifr.ifr_hwaddr.sa_data, ETH_ALEN, 1);
 }
 
 /*
@@ -211,6 +228,33 @@ static int extractPacket(char *bufbase, size_t limit, int o, int *basep, int *le
   /* printf("base %p limit %u o %d *basep now %d *lenp now %d nexto %d\n", */
   /* 	 bufbase, limit, o, *basep, *lenp, nexto); */
   return nexto;
+}
+
+static Scheme_Object *socket_hwaddr(int argc, Scheme_Object **argv) {
+  Scheme_Object *result = scheme_false;
+  int sock = SCHEME_INT_VAL(argv[0]);
+  char const *interfaceName = SCHEME_BYTE_STR_VAL(argv[1]);
+  struct ifaddrs *addrs;
+  struct ifaddrs *tmp;
+
+  if (getifaddrs(&addrs) == -1) {
+    perror("getifaddrs");
+    return scheme_false;
+  }
+
+  for (tmp = addrs; tmp != NULL; tmp = tmp->ifa_next) {
+    if (tmp->ifa_addr != NULL &&
+	!strncmp(tmp->ifa_name, interfaceName, IFNAMSIZ) &&
+	tmp->ifa_addr->sa_family == AF_LINK)
+      {
+	struct sockaddr_dl *sdl = (struct sockaddr_dl *) tmp->ifa_addr;
+	result = scheme_make_sized_byte_string(LLADDR(sdl), sdl->sdl_alen, 1);
+	break;
+      }
+  }
+
+  freeifaddrs(addrs);
+  return result;
 }
 
 #endif
@@ -370,6 +414,9 @@ Scheme_Object *scheme_reload(Scheme_Env *env) {
 
   proc = scheme_make_prim_w_arity(socket_write, "socket-write", 2, 2);
   scheme_add_global("socket-write", proc, module_env);
+
+  proc = scheme_make_prim_w_arity(socket_hwaddr, "socket-hwaddr", 2, 2);
+  scheme_add_global("socket-hwaddr", proc, module_env);
 
   scheme_finish_primitive_module(module_env);
   return scheme_void;
