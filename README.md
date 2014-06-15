@@ -69,3 +69,12 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+## Bugs
+
+ - Waiting for a packet seems to use 100% of a CPU. It *looks* like
+   it's in the kernel. Is there some way of avoiding this?
+
+ - BPF exists not only on OSX, but also on many other BSDs. The
+   `#ifdefs` in the support code should be widened to allow it to run
+   there as well.
