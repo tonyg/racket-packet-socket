@@ -287,8 +287,8 @@ static int is_read_done(Scheme_Object *data) {
 
 static void prepare_for_sleep(Scheme_Object *data, void *fds) {
   struct ReadArgs *read_args = (struct ReadArgs*) data;
-
-  MZ_FD_SET(read_args->sock, scheme_get_fdset(fds, 1));
+  MZ_FD_SET(read_args->sock, MZ_GET_FDSET(fds, 0));
+  MZ_FD_SET(read_args->sock, MZ_GET_FDSET(fds, 2));
 }
 
 Scheme_Object *socket_read(int argc, Scheme_Object **argv) {
