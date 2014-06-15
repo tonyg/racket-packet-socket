@@ -308,7 +308,7 @@ Scheme_Object *socket_read(int argc, Scheme_Object **argv) {
   /* fflush(NULL); */
 
   pthread_create(&read_thread, NULL, do_actual_read, &read_args);
-  scheme_block_until(is_read_done, prepare_for_sleep, (Scheme_Object *) &read_args, -1);
+  scheme_block_until(is_read_done, prepare_for_sleep, (Scheme_Object *) &read_args, 0);
 
   {
     int extractionState = 0;
