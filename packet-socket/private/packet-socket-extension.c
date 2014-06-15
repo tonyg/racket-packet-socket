@@ -292,14 +292,20 @@ static void prepare_for_sleep(Scheme_Object *data, void *fds) {
 }
 
 Scheme_Object *socket_read(int argc, Scheme_Object **argv) {
-  struct ReadArgs read_args;
+  struct ReadArgs *read_args;
   pthread_t read_thread;
   Scheme_Object *result = scheme_null;
 
-  read_args.sock = SCHEME_INT_VAL(argv[0]);
-  read_args.buf =  SCHEME_BYTE_STR_VAL(argv[1]);
-  read_args.blen = SCHEME_BYTE_STRLEN_VAL(argv[1]);
-  read_args.bytes_read = 0;
+  read_args = calloc(1, sizeof(*read_args));
+  if (read_args == NULL) {
+    perror("socket-read calloc");
+    return scheme_false;
+  }
+
+  read_args->sock = SCHEME_INT_VAL(argv[0]);
+  read_args->buf =  SCHEME_BYTE_STR_VAL(argv[1]);
+  read_args->blen = SCHEME_BYTE_STRLEN_VAL(argv[1]);
+  read_args->bytes_read = 0;
 
   /* printf("original thread sock: %d, buf: %p, len: %d\n", */
   /* 	 read_args.sock, */
@@ -307,8 +313,8 @@ Scheme_Object *socket_read(int argc, Scheme_Object **argv) {
   /* 	 read_args.blen); */
   /* fflush(NULL); */
 
-  pthread_create(&read_thread, NULL, do_actual_read, &read_args);
-  scheme_block_until(is_read_done, prepare_for_sleep, (Scheme_Object *) &read_args, 0);
+  pthread_create(&read_thread, NULL, do_actual_read, read_args);
+  scheme_block_until(is_read_done, prepare_for_sleep, (Scheme_Object *) read_args, 0);
 
   {
     int extractionState = 0;
@@ -316,15 +322,16 @@ Scheme_Object *socket_read(int argc, Scheme_Object **argv) {
     int length = 0;
 
     do {
-      extractionState = extractPacket(read_args.buf, read_args.bytes_read, extractionState,
+      extractionState = extractPacket(read_args->buf, read_args->bytes_read, extractionState,
 				      &baseOffset,
 				      &length);
       result = scheme_make_pair(scheme_make_pair(scheme_make_integer(baseOffset),
 						 scheme_make_integer(length)),
 				result);
-    } while (extractionState < read_args.bytes_read);
+    } while (extractionState < read_args->bytes_read);
   }
 
+  free(read_args);
   return result;
 }
 
