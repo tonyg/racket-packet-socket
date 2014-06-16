@@ -174,7 +174,7 @@
 		   fragment-offset
 		   header-checksum)
 	   (if (and (>= header-length 5)
-		    (>= (bit-string-length body) (* header-length 4)))
+		    (>= (bit-string-byte-count body) (* header-length 4)))
 	       (let ((options-length (* 4 (- header-length IP-MINIMUM-HEADER-LENGTH))))
 		 (bit-string-case rest
 		   ([ (opts :: binary bytes options-length)
