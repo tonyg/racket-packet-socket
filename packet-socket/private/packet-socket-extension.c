@@ -364,14 +364,14 @@ Scheme_Object *socket_read(int argc, Scheme_Object **argv) {
     int extractionState = 0;
     int baseOffset = 0;
     int length = 0;
+    Scheme_Object *entry = scheme_null;
 
     do {
       extractionState = extractPacket(read_args->buf, read_args->bytes_read, extractionState,
 				      &baseOffset,
 				      &length);
-      result = scheme_make_pair(scheme_make_pair(scheme_make_integer(baseOffset),
-						 scheme_make_integer(length)),
-				result);
+      entry = scheme_make_pair(scheme_make_integer(baseOffset), scheme_make_integer(length));
+      result = scheme_make_pair(entry, result);
     } while (extractionState < read_args->bytes_read);
   }
 
