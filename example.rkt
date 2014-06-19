@@ -175,14 +175,19 @@
 		   header-checksum)
 	   (if (and (>= header-length 5)
 		    (>= (bit-string-byte-count body) (* header-length 4)))
-	       (let ((options-length (* 4 (- header-length IP-MINIMUM-HEADER-LENGTH))))
+	       (let ((options-length (* 4 (- header-length IP-MINIMUM-HEADER-LENGTH)))
+		     (data-length (- total-length (* 4 header-length))))
 		 (bit-string-case rest
 		   ([ (opts :: binary bytes options-length)
-		      (data :: binary) ]
+		      (data :: binary bytes data-length)
+		      (junk :: binary) ]
 		    (printf "  options:\n")
 		    (dump opts)
 		    (printf "  data:\n")
-		    (analyze-ipv4-data protocol data))))
+		    (analyze-ipv4-data protocol data)
+		    (when (positive? (bit-string-byte-count junk))
+		      (printf "  junk (ethernet short packet trailer?):\n")
+		      (dump junk)))))
 	       (begin (printf "  invalid header length; rest:\n")
 		      (dump rest))))
 	  (else
