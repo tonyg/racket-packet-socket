@@ -87,8 +87,11 @@ static int openSocket(char const *interfaceName)
 static int readBufferLength(int sock)
   XFORM_SKIP_PROC
 {
-  /* TODO: larger? */
-  return ETHER_MAX_LEN;
+  /* If we supply ETHER_MAX_LEN here, then we miss out on the occasional larger (!) packet. */
+  /* Instead, we supply something definitely large enough. */
+  /* TODO: Consider returning something closer to around 9000 bytes,
+     or whatever jumbo packet sizes are these days. */
+  return 65536;
 }
 
 static int extractPacket(char * const bufbase, size_t limit, int o, int *basep, int *lenp) {
@@ -309,18 +312,31 @@ static Scheme_Object *socket_read_buffer_length(int argc, Scheme_Object **argv) 
 
 struct ReadArgs {
   int sock;
-  char *buf;
+  unsigned char *buf;
   int blen;
-  int bytes_read;
+  volatile int bytes_read;
 };
 
-static void *do_actual_read(void *read_args) {
+static void *do_actual_read(void *read_args)
+  XFORM_SKIP_PROC
+{
   struct ReadArgs *args = (struct ReadArgs *) read_args;
-  args->bytes_read = read(args->sock, args->buf, args->blen);
-  if (args->bytes_read == -1) {
+#if defined(__APPLE__)
+  ssize_t result = read(args->sock, args->buf, args->blen);
+#else
+  ssize_t result = recv(args->sock, args->buf, args->blen, MSG_TRUNC);
+  if (result > args->blen) {
+    fprintf(stderr,
+	    "WARNING: packet-socket buffer size %d too small for received packet of %d bytes\n",
+	    args->blen,
+	    result);
+    result = args->blen;
+  }
+#endif
+  if (result == -1) {
     perror("packet-socket read");
   }
-  //scheme_signal_received();
+  args->bytes_read = result;
   return NULL;
 }
 
