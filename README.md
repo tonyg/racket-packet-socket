@@ -47,6 +47,15 @@ this could be:
 sudo setcap cap_net_raw+p+i+e `which racket`
 ```
 
+Be warned that ethernet has a 64-byte minimum packet size. Less four
+bytes for the checksum, two for the ethertype, and twelve for the
+sender and target MAC addresses, that leaves 46 bytes of payload in
+such a minimum-sized packet. If you are expecting to receive packets
+with *fewer than 46 bytes of payload*, then make sure to handle the
+zero-padding that gets added to the end by the ethernet! For example,
+IPv4 packets have an explicit whole-packet length indicator for just
+such a situation.
+
 ## Who?
 
 Copyright (c) 2014 [Jonathan Schuster](https://github.com/schuster)  
