@@ -412,6 +412,7 @@ Scheme_Object *socket_read(int argc, Scheme_Object **argv) {
     memcpy(SCHEME_BYTE_STR_VAL(argv[1]), read_buffer, read_args->bytes_read);
   }
 
+  pthread_join(read_thread, NULL);
   free(read_buffer);
   free(read_args);
   return result;
