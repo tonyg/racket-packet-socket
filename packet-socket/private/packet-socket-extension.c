@@ -15,6 +15,9 @@
 
 #include <net/if.h>
 #include <net/ethernet.h>
+#include <arpa/inet.h> /* for htons */
+
+#include <pthread.h>
 
 #if defined(__linux__)
 #include <net/if_arp.h>
