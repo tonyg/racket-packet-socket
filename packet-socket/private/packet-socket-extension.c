@@ -380,11 +380,10 @@ Scheme_Object *socket_read(int argc, Scheme_Object **argv) {
   read_args->blen = buffer_length;
   read_args->bytes_read = 0;
 
-  /* printf("original thread sock: %d, buf: %p, len: %d\n", */
-  /* 	 read_args.sock, */
-  /* 	 read_args.buf, */
-  /* 	 read_args.blen); */
-  /* fflush(NULL); */
+  /* fprintf(stderr, "original thread sock: %d, buf: %p, len: %d\n", */
+  /* 	  read_args->sock, */
+  /* 	  read_args->buf, */
+  /* 	  read_args->blen); */
 
   pthread_create(&read_thread, NULL, do_actual_read, read_args);
   scheme_block_until(is_read_done, prepare_for_sleep, (Scheme_Object *) read_args, 0);
