@@ -461,7 +461,7 @@ Scheme_Object *scheme_reload(Scheme_Env *env) {
 }
 
 Scheme_Object *scheme_initialize(Scheme_Env *env) {
-  scheme_reload(env);
+  return scheme_reload(env);
 }
 
 Scheme_Object *scheme_module_name() {
