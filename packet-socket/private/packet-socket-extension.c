@@ -97,7 +97,7 @@ static int readBufferLength(int sock)
   return 65536;
 }
 
-static int extractPacket(char * const bufbase, size_t limit, int o, int *basep, int *lenp) {
+static int extractPacket(unsigned char const *bufbase, size_t limit, int o, int *basep, int *lenp) {
   *basep = 0;
   *lenp = (o == 0) ? limit : 0;
   return limit;
@@ -217,7 +217,7 @@ static int readBufferLength(int fd)
   return buflen;
 }
 
-static int extractPacket(char *bufbase, size_t limit, int o, int *basep, int *lenp)
+static int extractPacket(unsigned char const *bufbase, size_t limit, int o, int *basep, int *lenp)
   XFORM_SKIP_PROC
 {
   struct bpf_hdr *bh = (struct bpf_hdr *) (bufbase + o);
