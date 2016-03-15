@@ -1,3 +1,3 @@
 #lang setup/infotab
 (define collection 'multi)
-(define deps '("base"))
+(define deps '("base" "make"))
