@@ -55,12 +55,15 @@
   (match (raw-interface-buffered-packets handle)
     ['()
      (define buffer (make-bytes (raw-interface-buflen handle)))
-     (define subpacketspecs (socket-read (raw-interface-fd handle) buffer))
-     (define buffered-packets (for/list [(subpacketspec subpacketspecs)]
-				(match-define (cons offset len) subpacketspec)
-				(subbytes buffer offset (+ offset len))))
-     (set-raw-interface-buffered-packets! handle buffered-packets)
-     (raw-interface-read handle)]
+     (match (socket-read (raw-interface-fd handle) buffer)
+       [(? number? errno)
+        (error 'raw-interface-read "Read yielded errno ~a" errno)]
+       [subpacketspecs
+        (define buffered-packets (for/list [(subpacketspec subpacketspecs)]
+                                   (match-define (cons offset len) subpacketspec)
+                                   (subbytes buffer offset (+ offset len))))
+        (set-raw-interface-buffered-packets! handle buffered-packets)
+        (raw-interface-read handle)])]
     [(cons packet rest)
      (set-raw-interface-buffered-packets! handle rest)
      packet]))

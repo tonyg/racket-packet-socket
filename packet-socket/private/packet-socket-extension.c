@@ -17,7 +17,8 @@
 #include <net/ethernet.h>
 #include <arpa/inet.h> /* for htons */
 
-#include <pthread.h>
+#include <signal.h>
+#include <poll.h>
 
 #if defined(__linux__)
 #include <net/if_arp.h>
@@ -292,6 +293,7 @@ static Scheme_Object *create_and_bind_socket(int argc, Scheme_Object **argv) {
   int sock;
   char const *interfaceName = SCHEME_BYTE_STR_VAL(argv[0]);
   sock = openSocket(interfaceName);
+  fcntl(sock, F_SETFL, O_NONBLOCK);
   return (sock == -1) ? scheme_false : scheme_make_integer(sock);
 }
 
@@ -313,108 +315,96 @@ static Scheme_Object *socket_read_buffer_length(int argc, Scheme_Object **argv) 
   return scheme_make_integer(readBufferLength(sock));
 }
 
-struct ReadArgs {
-  int sock;
-  unsigned char *buf;
-  int blen;
-  volatile int bytes_read;
-};
+static int is_socket_readable(void *data) {
+  GC_CAN_IGNORE struct pollfd pfd[1];
+  int sock = (int) (intptr_t) data;
+  int result;
 
-static void *do_actual_read(void *read_args)
-  XFORM_SKIP_PROC
-{
-  struct ReadArgs *args = (struct ReadArgs *) read_args;
-#if defined(__APPLE__)
-  ssize_t result = read(args->sock, args->buf, args->blen);
-#else
-  ssize_t result = recv(args->sock, args->buf, args->blen, MSG_TRUNC);
-  if (result > args->blen) {
-    fprintf(stderr,
-	    "WARNING: packet-socket buffer size %d too small for received packet of %d bytes\n",
-	    args->blen,
-	    result);
-    result = args->blen;
-  }
-#endif
-  if (result == -1) {
-    perror("packet-socket read");
-  }
-  args->bytes_read = result;
-  return NULL;
+  pfd[0].fd = sock;
+  pfd[0].events = POLLIN;
+  do {
+    result = poll(pfd, 1, 0);
+  } while ((result == -1) && (errno == EINTR));
+
+  return !!result;
 }
 
-static int is_read_done(Scheme_Object *data) {
-  struct ReadArgs *read_args = (struct ReadArgs*) data;
-  return read_args->bytes_read != 0;
-}
-
-static void prepare_for_sleep(Scheme_Object *data, void *fds) {
-  struct ReadArgs *read_args = (struct ReadArgs*) data;
-  MZ_FD_SET(read_args->sock, MZ_GET_FDSET(fds, 0));
-  MZ_FD_SET(read_args->sock, MZ_GET_FDSET(fds, 2));
+static void prepare_for_sleep(void *data, void *fds) {
+  int sock = (int) (intptr_t) data;
+  MZ_FD_SET(sock, MZ_GET_FDSET(fds, 0));
+  MZ_FD_SET(sock, MZ_GET_FDSET(fds, 2));
 }
 
 Scheme_Object *socket_read(int argc, Scheme_Object **argv) {
-  struct ReadArgs *read_args;
-  size_t buffer_length;
+  int sock;
   unsigned char *read_buffer;
-  pthread_t read_thread;
-  Scheme_Object *result = scheme_null;
+  ssize_t buffer_length;
+  ssize_t bytes_read;
 
-  read_args = calloc(1, sizeof(*read_args));
-  if (read_args == NULL) {
-    perror("socket-read calloc read_args");
-    return scheme_false;
-  }
+  sock = SCHEME_INT_VAL(argv[0]);
 
+  read_buffer = SCHEME_BYTE_STR_VAL(argv[1]);
   buffer_length = SCHEME_BYTE_STRLEN_VAL(argv[1]);
-  read_buffer = calloc(1, buffer_length);
-  if (read_buffer == NULL) {
-    perror("socket-read calloc read_buffer");
-    free(read_args);
-    return scheme_false;
+
+  while (1) {
+#if defined(__APPLE__)
+    bytes_read = read(sock, read_buffer, buffer_length);
+#else
+    bytes_read = recv(sock, read_buffer, buffer_length, MSG_TRUNC);
+    if (bytes_read > buffer_length) {
+      fprintf(stderr,
+              "WARNING: packet-socket buffer size %d too small for received packet of %d bytes\n",
+              buffer_length,
+              bytes_read);
+      bytes_read = buffer_length;
+    }
+#endif
+
+    if (bytes_read == -1) {
+      switch (errno) {
+        case EINTR:
+          continue;
+        case EAGAIN: {
+          Scheme_Object *sema;
+          sema = scheme_fd_to_semaphore(sock, MZFD_CREATE_READ, 1);
+          if (sema) {
+            scheme_wait_sema(sema, 0);
+          } else {
+            scheme_block_until((Scheme_Ready_Fun) is_socket_readable,
+                               (Scheme_Needs_Wakeup_Fun) prepare_for_sleep,
+                               (Scheme_Object *) (intptr_t) sock, /* ewwwwwwwww */
+                               0);
+          }
+          continue;
+        }
+        default:
+          return scheme_make_integer(errno);
+      }
+    } else {
+      break;
+    }
   }
 
-  read_args->sock = SCHEME_INT_VAL(argv[0]);
-  read_args->buf = read_buffer;
-  read_args->blen = buffer_length;
-  read_args->bytes_read = 0;
-
-  /* fprintf(stderr, "original thread sock: %d, buf: %p, len: %d\n", */
-  /* 	  read_args->sock, */
-  /* 	  read_args->buf, */
-  /* 	  read_args->blen); */
-
-  pthread_create(&read_thread, NULL, do_actual_read, read_args);
-  scheme_block_until(is_read_done, prepare_for_sleep, (Scheme_Object *) read_args, 0);
-
-  if (read_args->bytes_read < 0) {
-    result = scheme_false;
-  } else {
+  {
+    Scheme_Object *result = scheme_null;
+    Scheme_Object *entry = scheme_null;
     int extractionState = 0;
     int baseOffset = 0;
     int length = 0;
-    Scheme_Object *entry = scheme_null;
 
     do {
-      extractionState = extractPacket(read_args->buf, read_args->bytes_read, extractionState,
-				      &baseOffset,
-				      &length);
-      entry = scheme_make_pair(scheme_make_integer(baseOffset), scheme_make_integer(length));
+      extractionState = extractPacket(read_buffer,
+                                      bytes_read,
+                                      extractionState,
+                                      &baseOffset,
+                                      &length);
+      entry = scheme_make_pair(scheme_make_integer(baseOffset),
+                               scheme_make_integer(length));
       result = scheme_make_pair(entry, result);
-    } while (extractionState < read_args->bytes_read);
+    } while (extractionState < bytes_read);
 
-    /* It's a shame this is necessary, but the GC can move the buffer
-       unpredictably so we can't read straight into it. TODO: see if
-       there's some way of pinning the Racket buffer in order to avoid
-       the copy? */
-    memcpy(SCHEME_BYTE_STR_VAL(argv[1]), read_buffer, read_args->bytes_read);
+    return result;
   }
-
-  pthread_join(read_thread, NULL);
-  free(read_buffer);
-  free(read_args);
-  return result;
 }
 
 static Scheme_Object *socket_write(int argc, Scheme_Object **argv) {
