@@ -343,7 +343,7 @@ Scheme_Object *socket_read(int argc, Scheme_Object **argv) {
 
   sock = SCHEME_INT_VAL(argv[0]);
 
-  read_buffer = SCHEME_BYTE_STR_VAL(argv[1]);
+  read_buffer = (unsigned char *) SCHEME_BYTE_STR_VAL(argv[1]);
   buffer_length = SCHEME_BYTE_STRLEN_VAL(argv[1]);
 
   while (1) {
