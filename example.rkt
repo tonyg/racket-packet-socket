@@ -16,7 +16,13 @@
   (define device-name
     (let loop ((candidates '("wlan0" "eth0" "en0" "en1")))
       (match candidates
-        ['() (car device-names)] ;; whatever is left
+        ['()
+         ;; fall back to heuristics
+         (match (filter (lambda (n) (string-prefix? n "w")) device-names)
+           ['() (match (filter (lambda (n) (string-prefix? n "e")) device-names)
+                  ['() (car device-names)] ;; whatever is left
+                  [(cons n _) n])]
+           [(cons n _) n])]
         [(cons candidate rest)
          (if (member candidate device-names)
              candidate
