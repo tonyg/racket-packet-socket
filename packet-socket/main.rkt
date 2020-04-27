@@ -128,7 +128,7 @@
                 (packet_socket_extract_packet buffer bytes-read old-state))
               (let ((acc (cons packet acc)))
                 (if (< state bytes-read)
-                    (loop acc)
+                    (loop acc state)
                     (reverse acc)))))
           (set-raw-interface-buffered-packets! handle buffered-packets)
           (raw-interface-read handle)]))]
