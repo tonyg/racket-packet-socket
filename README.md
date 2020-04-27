@@ -10,7 +10,7 @@ A tiny C extension, with a pinch of Racket hackage,
 Relieves you of your burden and returns you to your slackage,  
 And competently fixes Racket's packet socket lackage.
 
-— [tonyg](http://github.com/tonyg), with [apologies to Gene Ziegler](http://web.archive.org/web/20130301230602/http://geneziegler.com/clocktower/drseuss.html)
+— [tonyg](http://leastfixedpoint.com/), with [apologies to Gene Ziegler](http://web.archive.org/web/20130301230602/http://geneziegler.com/clocktower/drseuss.html)
 
 ## What?
 
@@ -59,7 +59,7 @@ such a situation.
 ## Who?
 
 Copyright (c) 2014 [Jonathan Schuster](https://github.com/schuster)  
-Copyright (c) 2014 [Tony Garnock-Jones](https://github.com/tonyg)
+Copyright (c) 2014-2020 [Tony Garnock-Jones](https://leastfixedpoint.com/)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

@@ -1,10 +1,7 @@
 #lang setup/infotab
 
 (define name "packet-socket")
-(define blurb
-  (list
-   `(p "Access to raw Ethernet frames from Racket")))
-(define homepage "https://github.com/tonyg/racket-packet-socket")
+(define blurb (list `(p "Access to raw Ethernet frames from Racket")))
 (define primary-file "main.rkt")
 (define categories '(net))
 
