@@ -7,7 +7,7 @@ clean:
 	find . -name compiled -type d | xargs rm -rf
 
 setup:
-	raco setup $(COLLECTS)
+	raco setup --check-pkg-deps --unused-pkg-deps $(COLLECTS)
 
 link:
 	raco pkg install --link -n $(PACKAGENAME) $$(pwd)
