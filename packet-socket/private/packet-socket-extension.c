@@ -30,16 +30,14 @@
 #include <net/bpf.h>
 #endif
 
-#include "escheme.h"
+#define PREFIX(id) packet_socket_ ## id
 
 /***************************************************************************/
 /* Linux-specific implementation */
 
 #if defined(__linux__)
 
-static int lookupInterfaceInfo(int sock, char const *interfaceName, int info, struct ifreq *ifr)
-  XFORM_SKIP_PROC
-{
+static int lookupInterfaceInfo(int sock, char const *interfaceName, int info, struct ifreq *ifr) {
   strncpy(ifr->ifr_name, interfaceName, IFNAMSIZ);
   if (ioctl(sock, info, ifr) < 0) {
     perror("ioctl error while looking performing ioctl on interface");
@@ -50,9 +48,7 @@ static int lookupInterfaceInfo(int sock, char const *interfaceName, int info, st
   }
 }
 
-static int bindToInterface(int sock, char const *interfaceName)
-  XFORM_SKIP_PROC
-{
+static int bindToInterface(int sock, char const *interfaceName) {
   struct ifreq ifr;
   struct sockaddr_ll socketAddress;
 
@@ -72,9 +68,7 @@ static int bindToInterface(int sock, char const *interfaceName)
   return 0;
 }
 
-static int openSocket(char const *interfaceName)
-  XFORM_SKIP_PROC
-{
+static int openSocket(char const *interfaceName) {
   int sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
   if (sock < 0) {
     perror("Socket error");
@@ -88,9 +82,7 @@ static int openSocket(char const *interfaceName)
   return sock;
 }
 
-static int readBufferLength(int sock)
-  XFORM_SKIP_PROC
-{
+long PREFIX(read_buffer_length)(int sock) {
   /* If we supply ETHER_MAX_LEN here, then we miss out on the occasional larger (!) packet. */
   /* Instead, we supply something definitely large enough. */
   /* TODO: Consider returning something closer to around 9000 bytes,
@@ -98,32 +90,34 @@ static int readBufferLength(int sock)
   return 65536;
 }
 
-static int extractPacket(unsigned char const *bufbase, size_t limit, int o, int *basep, int *lenp) {
+int PREFIX(extract_packet)(unsigned char const *bufbase, size_t limit, int o, int *basep, int *lenp) {
   *basep = 0;
   *lenp = (o == 0) ? limit : 0;
   return limit;
 }
 
-static Scheme_Object *socket_hwaddr(int argc, Scheme_Object **argv) {
-  int sock = SCHEME_INT_VAL(argv[0]);
-  char const *interfaceName = SCHEME_BYTE_STR_VAL(argv[1]);
-  XFORM_CAN_IGNORE struct ifreq ifr;
-
+int PREFIX(hwaddr)(int sock, char const *interfaceName, unsigned char *buf, ssize_t *buflen) {
+  struct ifreq ifr;
   if (lookupInterfaceInfo(sock, interfaceName, SIOCGIFHWADDR, &ifr) < 0) {
-    return scheme_false;
+    return -1;
   }
 
   if (ifr.ifr_hwaddr.sa_family != ARPHRD_ETHER) {
-    return scheme_false;
+    return -1;
   }
 
-  return scheme_make_sized_byte_string(ifr.ifr_hwaddr.sa_data, ETH_ALEN, 1);
+  if (*buflen < ETH_ALEN) {
+    *buflen = ETH_ALEN;
+    return -2;
+  } else {
+    *buflen = ETH_ALEN;
+    memcpy(buf, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+    return 0;
+  }
 }
 
 /*
-static int setPromiscuousMode(int sock, int index)
-  XFORM_SKIP_PROC
-{
+static int setPromiscuousMode(int sock, int index) {
   struct packet_mreq req;
 
   req.mr_ifindex = index;
@@ -144,9 +138,7 @@ static int setPromiscuousMode(int sock, int index)
 /* OSX-specific implementation */
 #if defined(__APPLE__)
 
-static int openSocket(char const *interfaceName)
-  XFORM_SKIP_PROC
-{
+static int openSocket(char const *interfaceName) {
   int deviceIndex;
 
   for (deviceIndex = 0; deviceIndex < 10; deviceIndex++) {
@@ -207,9 +199,7 @@ static int openSocket(char const *interfaceName)
   return -1;
 }
 
-static int readBufferLength(int fd)
-  XFORM_SKIP_PROC
-{
+long PREFIX(read_buffer_length)(int fd) {
   u_int buflen;
   if (ioctl(fd, BIOCGBLEN, &buflen) < 0) {
     perror("ioctl BIOCGBLEN");
@@ -218,9 +208,7 @@ static int readBufferLength(int fd)
   return buflen;
 }
 
-static int extractPacket(unsigned char const *bufbase, size_t limit, int o, int *basep, int *lenp)
-  XFORM_SKIP_PROC
-{
+int PREFIX(extract_packet)(unsigned char const *bufbase, size_t limit, int o, int *basep, int *lenp) {
   struct bpf_hdr *bh = (struct bpf_hdr *) (bufbase + o);
   struct ether_header *eh = (struct ether_header *) (bufbase + o + bh->bh_hdrlen);
   int nexto;
@@ -237,16 +225,14 @@ static int extractPacket(unsigned char const *bufbase, size_t limit, int o, int 
   return nexto;
 }
 
-static Scheme_Object *socket_hwaddr(int argc, Scheme_Object **argv) {
-  Scheme_Object *result = scheme_false;
-  int sock = SCHEME_INT_VAL(argv[0]);
-  char const *interfaceName = SCHEME_BYTE_STR_VAL(argv[1]);
+int PREFIX(hwaddr)(int sock, char const *interfaceName, unsigned char *buf, ssize_t *buflen) {
+  int result = -1;
   struct ifaddrs *addrs;
   struct ifaddrs *tmp;
 
   if (getifaddrs(&addrs) == -1) {
     perror("getifaddrs");
-    return scheme_false;
+    return -1;
   }
 
   for (tmp = addrs; tmp != NULL; tmp = tmp->ifa_next) {
@@ -255,7 +241,13 @@ static Scheme_Object *socket_hwaddr(int argc, Scheme_Object **argv) {
 	tmp->ifa_addr->sa_family == AF_LINK)
       {
 	struct sockaddr_dl *sdl = (struct sockaddr_dl *) tmp->ifa_addr;
-	result = scheme_make_sized_byte_string(LLADDR(sdl), sdl->sdl_alen, 1);
+        if (*buflen < sdl->sdl_alen) {
+          result = -2;
+        } else {
+          memcpy(buf, LLADDR(sdl), sdl->sdl_alen);
+          result = 0;
+        }
+        *buflen = sdl->sdl_alen;
 	break;
       }
   }
@@ -269,82 +261,44 @@ static Scheme_Object *socket_hwaddr(int argc, Scheme_Object **argv) {
 /***************************************************************************/
 /* Common implementation */
 
-static Scheme_Object *enumerate_interfaces(int argc, Scheme_Object **argv) {
-  Scheme_Object *result = scheme_null;
+int PREFIX(enumerate_interfaces)(void (*callback)(char const *name)) {
   struct ifaddrs *addrs;
   struct ifaddrs *tmp;
 
   if (getifaddrs(&addrs) == -1) {
     perror("getifaddrs");
-    return scheme_false;
+    return -1;
   }
 
   for (tmp = addrs; tmp != NULL; tmp = tmp->ifa_next) {
     if (tmp->ifa_addr != NULL) {
-      result = scheme_make_pair(scheme_make_utf8_string(tmp->ifa_name), result);
+      callback(tmp->ifa_name);
     }
   }
 
   freeifaddrs(addrs);
-  return result;
+  return 0;
 }
 
-static Scheme_Object *create_and_bind_socket(int argc, Scheme_Object **argv) {
-  int sock;
-  char const *interfaceName = SCHEME_BYTE_STR_VAL(argv[0]);
-  sock = openSocket(interfaceName);
-  fcntl(sock, F_SETFL, O_NONBLOCK);
-  return (sock == -1) ? scheme_false : scheme_make_integer(sock);
+int PREFIX(create_and_bind)(char const *interfaceName) {
+  int sock = openSocket(interfaceName);
+  if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1) return -1;
+  return sock;
 }
 
-static Scheme_Object *close_socket(int argc, Scheme_Object **argv) {
-  int sock;
-  sock = SCHEME_INT_VAL(argv[0]);
-
+int PREFIX(close)(int sock) {
   if (close(sock) < 0) {
     perror("close");
-    return scheme_false;
+    return -1;
   }
 
-  return scheme_true;
+  return 0;
 }
 
-static Scheme_Object *socket_read_buffer_length(int argc, Scheme_Object **argv) {
-  int sock;
-  sock = SCHEME_INT_VAL(argv[0]);
-  return scheme_make_integer(readBufferLength(sock));
-}
-
-static int is_socket_readable(void *data) {
-  GC_CAN_IGNORE struct pollfd pfd[1];
-  int sock = (int) (intptr_t) data;
-  int result;
-
-  pfd[0].fd = sock;
-  pfd[0].events = POLLIN;
-  do {
-    result = poll(pfd, 1, 0);
-  } while ((result == -1) && (errno == EINTR));
-
-  return !!result;
-}
-
-static void prepare_for_sleep(void *data, void *fds) {
-  int sock = (int) (intptr_t) data;
-  MZ_FD_SET(sock, MZ_GET_FDSET(fds, 0));
-  MZ_FD_SET(sock, MZ_GET_FDSET(fds, 2));
-}
-
-Scheme_Object *socket_read(int argc, Scheme_Object **argv) {
-  int sock;
-  unsigned char *read_buffer;
-  ssize_t buffer_length;
+long PREFIX(read)(int sock, unsigned char *read_buffer, long buffer_length, int *truncated) {
   ssize_t bytes_read;
 
-  sock = SCHEME_INT_VAL(argv[0]);
-
-  read_buffer = (unsigned char *) SCHEME_BYTE_STR_VAL(argv[1]);
-  buffer_length = SCHEME_BYTE_STRLEN_VAL(argv[1]);
+  *truncated = 0;
 
   while (1) {
 #if defined(__APPLE__)
@@ -356,104 +310,19 @@ Scheme_Object *socket_read(int argc, Scheme_Object **argv) {
               "WARNING: packet-socket buffer size %d too small for received packet of %d bytes\n",
               buffer_length,
               bytes_read);
+      *truncated = 1;
       bytes_read = buffer_length;
     }
 #endif
 
-    if (bytes_read == -1) {
-      switch (errno) {
-        case EINTR:
-          continue;
-        case EAGAIN: {
-          Scheme_Object *sema;
-          sema = scheme_fd_to_semaphore(sock, MZFD_CREATE_READ, 1);
-          if (sema) {
-            scheme_wait_sema(sema, 0);
-          } else {
-            scheme_block_until((Scheme_Ready_Fun) is_socket_readable,
-                               (Scheme_Needs_Wakeup_Fun) prepare_for_sleep,
-                               (Scheme_Object *) (intptr_t) sock, /* ewwwwwwwww */
-                               0);
-          }
-          continue;
-        }
-        default:
-          return scheme_make_integer(errno);
-      }
-    } else {
-      break;
+    if (bytes_read != -1) break;
+
+    switch (errno) {
+      case EINTR: continue;
+      case EAGAIN: return -2;
+      default: return -1;
     }
   }
 
-  {
-    Scheme_Object *result = scheme_null;
-    Scheme_Object *entry = scheme_null;
-    int extractionState = 0;
-    int baseOffset = 0;
-    int length = 0;
-
-    do {
-      extractionState = extractPacket(read_buffer,
-                                      bytes_read,
-                                      extractionState,
-                                      &baseOffset,
-                                      &length);
-      entry = scheme_make_pair(scheme_make_integer(baseOffset),
-                               scheme_make_integer(length));
-      result = scheme_make_pair(entry, result);
-    } while (extractionState < bytes_read);
-
-    return result;
-  }
-}
-
-static Scheme_Object *socket_write(int argc, Scheme_Object **argv) {
-  int sock;
-  char *buf;
-  int blen, bytes_written;
-
-  sock = SCHEME_INT_VAL(argv[0]);
-  buf =  SCHEME_BYTE_STR_VAL(argv[1]);
-  blen = SCHEME_BYTE_STRLEN_VAL(argv[1]);
-  bytes_written = write(sock, buf, blen);
-  return scheme_make_integer(bytes_written);
-}
-
-Scheme_Object *scheme_reload(Scheme_Env *env) {
-  Scheme_Env *module_env;
-  Scheme_Object *proc;
-
-  module_env = scheme_primitive_module(scheme_intern_symbol("packet-socket-extension"), env);
-
-  proc = scheme_make_prim_w_arity(enumerate_interfaces, "enumerate-interfaces", 0, 0);
-  scheme_add_global("enumerate-interfaces", proc, module_env);
-
-  proc = scheme_make_prim_w_arity(close_socket, "socket-close", 1, 1);
-  scheme_add_global("socket-close", proc, module_env);
-
-  proc = scheme_make_prim_w_arity(create_and_bind_socket, "create-and-bind-socket", 1, 1);
-  scheme_add_global("create-and-bind-socket", proc, module_env);
-
-  proc = scheme_make_prim_w_arity(socket_read_buffer_length, "socket-read-buffer-length", 1, 1);
-  scheme_add_global("socket-read-buffer-length", proc, module_env);
-
-  proc = scheme_make_prim_w_arity(socket_read, "socket-read", 2, 2);
-  scheme_add_global("socket-read", proc, module_env);
-
-  proc = scheme_make_prim_w_arity(socket_write, "socket-write", 2, 2);
-  scheme_add_global("socket-write", proc, module_env);
-
-  proc = scheme_make_prim_w_arity(socket_hwaddr, "socket-hwaddr", 2, 2);
-  scheme_add_global("socket-hwaddr", proc, module_env);
-
-  scheme_finish_primitive_module(module_env);
-  return scheme_void;
-}
-
-Scheme_Object *scheme_initialize(Scheme_Env *env) {
-  return scheme_reload(env);
-}
-
-Scheme_Object *scheme_module_name() {
-  return scheme_intern_symbol("packet-socket-extension");
+  return (long) bytes_read;
 }

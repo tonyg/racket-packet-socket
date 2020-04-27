@@ -1,6 +1,3 @@
 #lang setup/infotab
 (define collection 'multi)
-(define deps '("base"
-               "make"
-               "bitsyntax"
-               ))
+(define deps '("base" "dynext-lib"))
